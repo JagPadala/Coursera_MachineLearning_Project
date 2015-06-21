@@ -1,0 +1,91 @@
+---
+title: "Exercise Class Predictor"
+author: "T Aristanto"
+date: "Saturday, June 20, 2015"
+output: html_document
+---
+## EXECUTIVE SUMMARY
+This program is used to predict the class of exercise based on the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. For detail of the data plese see  http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+Data was provided by  http://groupware.les.inf.puc-rio.br/har.
+##DATA LOADING, SETUP AND PROCESS
+
+Load Libraries
+```{r load libraries,Echo=TRUE}
+#For parallel processing
+library(doParallel)
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+#For Analysis and Machine Learning
+library(AppliedPredictiveModeling)
+library(caret)
+```
+
+We load the data from the given source. I choosed to download the data first before loading to R, thus the local loading folder. We cleaned the data in 3 ways:
+
+- Remove the Not Available column
+- Remove the first 7th column which contains unnecessary data
+- Remove the Near Zero values
+
+```{r Load , echo=TRUE, cache=TRUE}
+RawTrain <- read.csv("C:/DataScience/Class8-Machine/pml-training.csv")
+RawTest <- read.csv("C:/DataScience/Class8-Machine/pml-testing.csv")
+exertrain<-RawTrain[,colSums(is.na(RawTrain)) == 0]
+exertest <-RawTest[,colSums(is.na(RawTrain)) == 0]
+exertrain <- exertrain[,-c(1:7)]
+exertest <- exertest[,-c(1:7)]
+nsvcol <- nearZeroVar(exertrain[,-ncol(exertrain)],saveMetrics=FALSE)
+exertrain <- exertrain[-nsvcol]
+exertest <- exertest[-nsvcol]
+```
+
+Check that the train data set has the same columns than that of test data set
+```{r test column, echo=TRUE,cache=TRUE}
+all.equal(colnames(exertest)[1:length(colnames(exertest))-1], colnames(exertrain)[1:length(colnames(exertrain))-1])
+```
+
+
+## ANALYSIS AND PREDICTION
+We first create train and test data set out of the the training data set for Cross Validation. 
+```{r Create train test data, echo=TRUE, cache=TRUE}
+inTrain <- createDataPartition(exertrain$classe,p=0.75,list=FALSE)
+training <- exertrain[inTrain,]
+testing <- exertrain[-inTrain,]
+```
+
+We then use Random Forest Model to fit the data set
+```{r Build Model, echo=TRUE, cache=TRUE}
+set.seed(1404)
+fitctrl <- trainControl(method="repeatedcv", number=3, repeats=3)
+modelFit <- train(classe ~ ., data=training, method="rf", trControl=fitctrl)
+modelFit$finalModel
+```
+ 
+To cross validate, we applied the model to the testing (from training set) prediction
+```{r testing CV, echo=TRUE, cache=TRUE}
+predtrain <- predict(modelFit, testing)
+confusionMatrix(predtrain, testing$classe)
+```
+The model Shows a very high accuracy (over 99%), so this model is good.
+
+## FINAL PREDICTION
+We apply the model to the given test set
+```{r final, echo=TRUE, cache=TRUE}
+finalpred <- predict(modelFit, exertest)
+finalpred
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(finalpred)
+```
+
+##REFERENCE
+Please see: http://groupware.les.inf.puc-rio.br/har
+
+Parallel processing code was provided by Russ Boucher from the class Forum. 
+```
